@@ -1,0 +1,31 @@
+name: Release webhook
+
+on:
+  release:
+    types: [published]
+
+permissions: {}
+
+jobs:
+  send-webhook:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send release tag and notes
+        env:
+          RELEASE_WEBHOOK_URL: ${{ secrets.RELEASE_WEBHOOK_URL }}
+        shell: bash
+        run: |
+          if [[ -z "$RELEASE_WEBHOOK_URL" ]]; then
+            echo "::error::Set the RELEASE_WEBHOOK_URL Actions secret."
+            exit 1
+          fi
+
+          payload=$(jq -ce '.release | {tag: .tag_name, release_notes: (.body // "")}' "$GITHUB_EVENT_PATH")
+          status=$(curl --silent --show-error --globoff --output /dev/null \
+            --write-out '%{http_code}' --max-time 30 --proto '=https' \
+            --json @- --url "$RELEASE_WEBHOOK_URL" <<< "$payload")
+
+          if [[ "$status" != 2[0-9][0-9] ]]; then
+            echo "::error::Release webhook returned HTTP $status."
+            exit 1
+          fi
