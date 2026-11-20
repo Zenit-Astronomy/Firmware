@@ -18,8 +18,4 @@ with its update file attached.
 
 ## Release webhook
 
-Set the repository Actions secret `RELEASE_WEBHOOK_URL` to your receiving
-workflow's HTTPS webhook URL. Whenever a release or prerelease is published,
-GitHub Actions sends a JSON POST with `tag` (the release tag) and `release_notes`
-(the release body as Markdown, or an empty string if no notes were provided).
-Saving a draft or pushing a tag alone does not send a webhook.
+See [the release webhook documentation](docs/release-webhook.md) for setup details and the webhook payload.
