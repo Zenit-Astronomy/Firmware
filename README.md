@@ -15,3 +15,7 @@ with its update file attached.
 1. Download the `.raucb` update file attached to the product's release.
 2. Open the device's web interface and install the file from its update page.
 3. The device restarts into the new version once the update is installed.
+
+## Release webhook
+
+See [the release webhook documentation](docs/release-webhook.md) for setup details and the webhook payload.
