@@ -16,16 +16,50 @@ jobs:
         shell: bash
         run: |
           if [[ -z "$RELEASE_WEBHOOK_URL" ]]; then
-            echo "::error::Set the RELEASE_WEBHOOK_URL Actions secret."
+            echo "::error::Set the RELEASE_WEBHOOK_URL Actions secret to a Discord webhook URL."
             exit 1
           fi
 
-          payload=$(jq -ce '.release | {tag: .tag_name, release_notes: (.body // ""), content: (.tag_name + "\n\n" + (.body // ""))}' "$GITHUB_EVENT_PATH")
-          status=$(curl --silent --show-error --globoff --output /dev/null \
-            --write-out '%{http_code}' --max-time 30 --proto '=https' \
-            --json @- --url "$RELEASE_WEBHOOK_URL" <<< "$payload")
+          post_discord() {
+            local status
+            status=$(curl --silent --show-error --globoff --output /dev/null \
+              --write-out '%{http_code}' --max-time 30 --proto '=https' \
+              --url "$RELEASE_WEBHOOK_URL" --url-query 'wait=true' "$@")
+            if [[ "$status" != 2[0-9][0-9] ]]; then
+              echo "::error::Discord webhook returned HTTP $status."
+              exit 1
+            fi
+          }
 
-          if [[ "$status" != 2[0-9][0-9] ]]; then
-            echo "::error::Release webhook returned HTTP $status."
-            exit 1
+          release=$(jq -ce --arg prefix "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/" '
+            .release | .tag_name as $tag
+            | (.body // "" | sub("\\s+$"; "") | split("\n")) as $lines
+            | ($lines[-1] // "" | sub("^\\s*(\\*\\*Full Changelog\\*\\*:\\s*)?"; "")) as $footer
+            | if ($footer | startswith($prefix)) and
+                 ($footer | ltrimstr($prefix) | test("^[^\\s<>]+\\.\\.\\.[^\\s<>]+$"))
+              then {tag: $tag, notes: ($lines[:-1] | join("\n") | sub("\\s+$"; "")), comparison: $footer}
+              else {tag: $tag, notes: ($lines | join("\n")), comparison: null}
+              end
+          ' "$GITHUB_EVENT_PATH")
+
+          # Discord's SUPPRESS_EMBEDS flag applies to the whole message.
+          payload=$(jq -c '{
+            content: ("**Release: " + .tag + "**" + (if .notes == "" then "" else "\n\n" + .notes end)),
+            flags: 4, allowed_mentions: {parse: []}
+          }' <<< "$release")
+          if [[ $(jq '.content | length + ([explode[] | select(. > 65535)] | length)' <<< "$payload") -gt 2000 ]]; then
+            attachment_payload=$(jq -c '{content: ("**Release: " + .tag + "**"), flags: 4, allowed_mentions: {parse: []}}' <<< "$release")
+            jq -rj '.notes' <<< "$release" | post_discord \
+              --form-string "payload_json=$attachment_payload" \
+              --form 'files[0]=@-;filename=release-notes.md;type=text/markdown'
+          else
+            post_discord --json @- <<< "$payload"
+          fi
+
+          if [[ $(jq -r '.comparison // ""' <<< "$release") != "" ]]; then
+            comparison_payload=$(jq -c '{
+              content: ("**Full Changelog**: " + .comparison),
+              allowed_mentions: {parse: []}
+            }' <<< "$release")
+            post_discord --json @- <<< "$comparison_payload"
           fi
