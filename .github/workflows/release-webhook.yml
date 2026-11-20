@@ -20,7 +20,7 @@ jobs:
             exit 1
           fi
 
-          payload=$(jq -ce '.release | {tag: .tag_name, release_notes: (.body // "")}' "$GITHUB_EVENT_PATH")
+          payload=$(jq -ce '.release | {tag: .tag_name, release_notes: (.body // ""), content: (.tag_name + "\n\n" + (.body // ""))}' "$GITHUB_EVENT_PATH")
           status=$(curl --silent --show-error --globoff --output /dev/null \
             --write-out '%{http_code}' --max-time 30 --proto '=https' \
             --json @- --url "$RELEASE_WEBHOOK_URL" <<< "$payload")
